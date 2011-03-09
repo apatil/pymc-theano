@@ -1,3 +1,3 @@
-import model
-import mcmc
-import distributions
+from model import *
+from mcmc import *
+from distributions import *

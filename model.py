@@ -1,7 +1,8 @@
-import numpy as np
 import theano as th
+import functools
 from theano import tensor as T
 import pysistence as ps
+from pysistence import func
 
 # A model is a collection of variables and factors.
 # Variables 
@@ -14,8 +15,7 @@ def add_stochastic(model, name, new_variable, new_factors):
     return new_variable, model.using(variables = model['variables'].cons(new_variable),
                         factors = model['factors'].concat(ps.make_list(*new_factors)))
 
-def add_deterministic(model, name, new_variable):
-    return add_stochastic(model, name, new_variable, [])
+add_deterministic = functools.partial(add_stochastic, new_factors=[])
                         
 def isstochastic(variable):
     return hasattr(variable,'rng')
@@ -32,11 +32,18 @@ def stochastics(model):
 def deterministics(model):
     return filter(isdeterministic, model['variables'])
 
-def logp(model, variables=None):
-    if variables is None:
-        return th.function([], T.sum(list(model['factors'])), no_default_updates=True)
-    else:
-        if any(map(isdeterministic, variables)):
-            raise TypeError, "The arguments of the logp function cannot include the deterministics %s."%filter(isdeterministic, variables)
-        return th.function(variables, T.sum(list(model['factors'])), no_default_updates=True)
+def logp(model, arguments=[]):
+    if any(map(isdeterministic, arguments)):
+        raise TypeError, "The arguments of the logp function cannot include the deterministics %s."%filter(isdeterministic, arguments)
+    return th.function(arguments, T.sum(list(model['factors'])), no_default_updates=True)
+
+def to_namedict(values, variables):
+    return ps.make_dict(**dict([(var.name, val) for var,val in zip(variables, values)]))
+        
+def simulate_prior(model, arguments=[], outputs = None):
+    outputs = outputs or model['variables']
+    if any(map(isdeterministic, arguments)):
+        raise TypeError, "The arguments of the logp function cannot include the deterministics %s."%filter(isdeterministic, variables)
+    return func.compose(th.function(arguments, list(outputs)), functools.partial(to_namedict, variables=outputs))
+    
     
