@@ -68,7 +68,14 @@ def logp_or_neginf(logps):
     logps = list(logps)
     return T.switch(T.sum(T.eq(logps, neg_infinity)), neg_infinity, T.sum(logps))
 
-def logp(model, arguments=None):
+def maybe_compile(arguments, expression, compile):
+    "Either returns a raw Theano expression, or compiles it to a function."
+    if not compile:
+        return lambda new_args, arguments=arguments, expression=expression: th.clone(expression, replace=dict(zip(arguments, new_args)))
+    else:
+        return th.function(arguments, expression, no_default_updates=True)
+
+def logp(model, arguments=None, compile=True):
     """
     Returns a function that takes values for some stochastic variables in the model,
     and returns the total log-probability of the model given all the other variables'
@@ -76,9 +83,9 @@ def logp(model, arguments=None):
     """
     arguments = arguments or stochastics(model)
     check_no_deterministics(arguments, 'logp')
-    return th.function(arguments, logp_or_neginf(model['factors']), no_default_updates=True)
+    return maybe_compile(arguments, logp_or_neginf(model['factors']), compile)
     
-def logp_gradient(model, wrt, arguments=None):
+def logp_gradient(model, wrt, arguments=None, compile=True):
     """
     Returns a function that takes values for some stochastic variables in the model,
     and returns the gradient of the total log-probability with respect to the variables
@@ -86,33 +93,34 @@ def logp_gradient(model, wrt, arguments=None):
     """
     arguments = arguments or stochastics(model)
     check_no_deterministics(arguments, 'logp_gradient')
-    return th.function(arguments, T.grad(logp_or_neginf(model['factors']), wrt), no_default_updates=True)
+    return maybe_compile(arguments, T.grad(logp_or_neginf(model['factors']), wrt), compile)
 
 def get_argument_names(f):
     "Returns the names of the arguments of the Theano function."
     return [s.name for s in f.input_storage]
 
-def logp_difference(model, wrt, arguments=None):
+def shallow_variable_copy(x,name):
+    return x.__class__(x.type, name=x.name)
+
+def logp_difference(model, replacements, arguments=None, compile=True):
     """
     Returns a function that takes current values for some stochastic variables in the model,
     and new values for some stochastic variables in the model, and returns the new logp minus
     the current logp.
     """
-    raise NotImplementedError, "this should work yet, but it doesn't."
+    import warnings
+    warnings.warn("This should work yet, but it doesn't.")
+
     all_stochastics = stochastics(model)
     arguments = arguments or all_stochastics
     check_no_deterministics(arguments, 'logp_difference')
-    check_no_deterministics(wrt, 'logp_difference')
     
-    replacements = {}
-    for w in wrt:
-        replacements[w] = shallow_variable_copy(w, w.name+'_new')
     differences = []
     for f in model['factors']:
         f_new = th.clone(f, replace=replacements)
         differences.append(f_new - f)
 
-    return th.function(arguments + [replacements[w] for w in wrt], logp_or_neginf(differences), no_default_updates=True)
+    return maybe_compile(arguments + [replacements[w] for w in wrt], logp_or_neginf(differences), compile)
 
 def to_namedict(variables, values):
     "Makes a persistent dict mapping variable name to value."
