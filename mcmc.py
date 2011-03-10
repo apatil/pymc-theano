@@ -19,10 +19,32 @@ def metropolis(model, state, orig_x, cur_x, info):
             next_x, 
             state.replace(cur_x, next_x)
 
+def flatten_info(state, info, variables):
+    flat_input = list(state)
+    for v in variables:
+        flat_input += info[v].values()
+    return flat_input
+    
+def unflatten_info(flat_output, old_state, old_info, variables):
+    len_oldstate = len(list(old_state))
+    info = {}
+    counter = len_oldstate
+    for v in variables:
+        keys = old_info[v].keys()
+        info[v] = ps.make_dict(**dict(zip(keys, flat_output[counter:len(keys)])))
+        counter += len(keys)
+    return ps.make_list(*flat_output[:len_oldstate]), ps.make_dict(**info)
+    
+
 def compiled_mcmc_sweep(model, methods, info, n_cycles):
-    "A declarative MCMC sweep. The entire sweep is compiled together, and returns to Python."
+    """
+    A declarative MCMC algorithm, running for a set number of cycles.
+    Only the terminal value is returned to Python.
+    """
     state = model['variables']
     orig_variables = methods.keys()
+    variables = orig_variables
+    orig_info = info
     
     for i in xrange(n_cycles):
         new_variables = []
@@ -32,18 +54,15 @@ def compiled_mcmc_sweep(model, methods, info, n_cycles):
             new_variables.append(new_variable)
         variables = new_variables
     
-    sweep_expression = list(state) + [info[ov] for ov in orig_variables]
+    flat_input = flatten_info(model['variables'], orig_info, orig_variables)
+    flat_output = flatten_info(state, info, variables)
+    f = th.function(flat_input, flat_output, no_default_updates=True)
     
-    f = th.function(model['variables'], sweep_expression, no_default_updates=True)
-    
-    def sweep(init_state, f=f, orig_variables=orig_variables):
-        raw_output = f(init_state)
-        state_size =len(list(init_state))
-        new_state = ps.make_list(*raw_output[:state_size])
-        
-        info = dict(zip(orig_variables, raw_output[state_size:]))
-        
-        return new_state, info
+    def sweep(state, info, f=f, orig_variables=orig_variables):
+        "Maps (state, info) to (state, info) after %i MCMC cycles."%n_cycles
+        flat_input = flatten_info(state, info, orig_variables)
+        flat_output = f(state)        
+        return unflatten_info(flat_output, state, info, orig_variables)
         
     return sweep
     
@@ -51,8 +70,11 @@ def tune(info, n_cycles):
     return info.using(acceptance=0)
 
 # FIXME: Dataless submodels...    
-def metropolis_mcmc(model, observations, n_sweeps, n_cycles_per_sweep, methods=empty_dict, info=empty_dict):
+def metropolis_mcmc(model, observations, n_sweeps, n_cycles_per_sweep, methods=empty_dict, info=empty_dict, seed=None):
     "The full MCMC algorithm, which returns a trace."
+
+    if seed:
+        seed_model(model, seed)
 
     fixed_variables = []
     for v in model['variables']:

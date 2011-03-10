@@ -42,7 +42,7 @@ def isdeterministic(variable):
     "Tests whether the variable is deterministic conditional on its parents."
     return not isstochastic(variable) and not isconstant(variable)
 
-def seed(model, seed):
+def seed_model(model, seed):
     "Seeds all the rngs used by the variables."
     model['stream'].seed(seed)
 
