@@ -13,15 +13,21 @@ def empty_model():
     "Initializes a new empty model."
     return ps.make_dict(variables=ps.make_list(), factors=ps.make_list(T.constant(0)), stream=th.tensor.shared_randomstreams.RandomStreams())
 
+def check_namedup(model, name):
+    if name in [v.name for v in model['variables']]:
+        raise ValueError, 'The model already contains a variable named %s.'%name
+
 def add_stochastic(model, name, new_variable, new_factors):
     "Returns a stochastic variable, and a version of model that incorporates that variable."
     new_variable.name = name
+    check_namedup(model, name)
     return new_variable, model.using(variables = model['variables'].cons(new_variable),
                         factors = model['factors'].concat(ps.make_list(*new_factors)))
 
 def add_deterministic(model, name, new_variable):
     "Returns a deterministic variable, and a version of the model that incorporates that variable."
     new_variable.name = name
+    check_namedup(model, name)
     return new_variable, model.using(variables = model['variables'].cons(new_variable))
             
 def isstochastic(variable):
@@ -48,6 +54,11 @@ def deterministics(model):
     "Returns all the deterministic variables in the model."
     return filter(isdeterministic, model['variables'])
 
+def check_no_deterministics(arguments, fname):
+    "Raises an error if any of arguments are deterministics"
+    if any(map(isdeterministic, arguments)):
+        raise TypeError, "The arguments of the function %s cannot include the deterministics %s."%(fname, filter(isdeterministic, arguments))
+
 def logp_or_neginf(logps):
     """
     If any of the logps is -infinity, returns -infinity regardless of whether
@@ -57,39 +68,29 @@ def logp_or_neginf(logps):
     logps = list(logps)
     return T.switch(T.sum(T.eq(logps, neg_infinity)), neg_infinity, T.sum(logps))
 
-def logp(model, arguments=[]):
+def logp(model, arguments=None):
     """
     Returns a function that takes values for some stochastic variables in the model,
     and returns the total log-probability of the model given all the other variables'
     current values.
     """
-    if any(map(isdeterministic, arguments)):
-        raise TypeError, "The arguments of the logp function cannot include the deterministics %s."%filter(isdeterministic, arguments)
+    arguments = arguments or stochastics(model)
+    check_no_deterministics(arguments, 'logp')
     return th.function(arguments, logp_or_neginf(model['factors']), no_default_updates=True)
     
-def logp_gradient(model, arguments):
-    if any(map(isdeterministic, arguments)):
-        raise TypeError, "The arguments of the logp_gradient function cannot include the deterministics %s."%filter(isdeterministic, arguments)
-    return th.function(arguments, T.grad(logp_or_neginf(model['factors']), arguments), no_default_updates=True)
+def logp_gradient(model, wrt, arguments=None):
+    """
+    Returns a function that takes values for some stochastic variables in the model,
+    and returns the gradient of the total log-probability with respect to the variables
+    in 'wrt'.
+    """
+    arguments = arguments or stochastics(model)
+    check_no_deterministics(arguments, 'logp_gradient')
+    return th.function(arguments, T.grad(logp_or_neginf(model['factors']), wrt), no_default_updates=True)
 
-def shallow_variable_copy(x):
-    return x.__class__(x.type, name=x.name)
-
-def logp_difference(model, arguments):
-    if any(map(isdeterministic, arguments)):
-        raise TypeError, "The arguments of the logp_difference function cannot include the deterministics %s."%filter(isdeterministic, arguments)
-    other_arguments = [{a: shallow_variable_copy(a)} for a in arguments]
-    other_argument_list = [other_arguments[a] for a in arguments]
-    differences = []
-    for f in model['factors']:
-        input_list = []
-        for i in f.owner.inputs:
-            if i in arguments:
-                input_list.append(other_argument_list[i])
-            else:
-                input_list.append(i)
-        differences.append()
-    return th.function(arguments, model['factors'], no_default_updates=True)
+def get_argument_names(f):
+    "Returns the names of the arguments of the Theano function."
+    return [s.name for s in f.input_storage]
 
 def to_namedict(variables, values):
     "Makes a persistent dict mapping variable name to value."
