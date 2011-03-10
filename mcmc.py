@@ -70,7 +70,7 @@ def tune(info, n_cycles):
     return info.using(acceptance=0)
 
 # FIXME: Dataless submodels...    
-def metropolis_mcmc(model, observations, n_sweeps, n_cycles_per_sweep, methods=empty_dict, info=empty_dict, seed=None):
+def mcmc(model, observations, n_sweeps, n_cycles_per_sweep, methods=empty_dict, info=empty_dict, seed=None):
     "The full MCMC algorithm, which returns a trace."
 
     if seed:
