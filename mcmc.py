@@ -4,27 +4,32 @@ import pysistence as ps
 import numpy as np
 import model
 
-def metropolis(model, state, orig_x, cur_x, sigma):
+empty_dict = ps.make_dict()
+
+def metropolis(model, state, orig_x, cur_x, info):
     "A declarative Metropolis step replacing x in the state vector with its new value."
+    sigma = info.get('sigma',1)
     x_p = model['stream'].normal(avg=cur_x, std=sigma)
     
     lpd = logp_difference(model, {orig_x:x_p}, compile=False)(state)
     acc = T.log(model['stream'].uniform())<lpd
-    x_next = T.switch(acc, x_p, cur_x)
+    next_x = T.switch(acc, x_p, cur_x)
     
-    return acc, x_next, state.replace(cur_x, x_next)
+    return info.using(acceptance=info.get('acceptance',0)+acc), 
+            next_x, 
+            state.replace(cur_x, next_x)
 
-def metropolis_sweep(model, variables, sigmas, info, n_cycles):
-    "A declarative Metropolis sweep. The entire sweep is compiled together, and returns to Python."
+def compiled_mcmc_sweep(model, methods, info, n_cycles):
+    "A declarative MCMC sweep. The entire sweep is compiled together, and returns to Python."
     state = model['variables']
-    orig_variables = variables
+    orig_variables = methods.keys()
     
     for i in xrange(n_cycles):
         new_variables = []
         for v,ov in zip(variables, orig_variables):
-            acc, new_variable, state = metropolis(model, state, ov, v, sigmas[ov])
+            info_, new_variable, state = methods[ov](model, state, ov, v, info[ov])
+            info = info.using(ov=info_)
             new_variables.append(new_variable)
-            info[ov] = info[ov]+acc
         variables = new_variables
     
     sweep_expression = list(state) + [info[ov] for ov in orig_variables]
@@ -42,11 +47,11 @@ def metropolis_sweep(model, variables, sigmas, info, n_cycles):
         
     return sweep
     
-def tune(sigma, acceptance):
-    return sigma    
+def tune(info, n_cycles):
+    return info.using(acceptance=0)
 
 # FIXME: Dataless submodels...    
-def metropolis_mcmc(model, observations, sigmas, n_sweeps, n_cycles_per_sweep):
+def metropolis_mcmc(model, observations, n_sweeps, n_cycles_per_sweep, methods=empty_dict, info=empty_dict):
     "The full MCMC algorithm, which returns a trace."
 
     fixed_variables = []
@@ -54,22 +59,24 @@ def metropolis_mcmc(model, observations, sigmas, n_sweeps, n_cycles_per_sweep):
         if not observations.has_key(v) and isstochastic(v):
             variables_to_update.append(v)
 
-    for v in variables_to_update:
-        sigmas[v] = sigmas.get(v,1)
-    
+    methods = ps.make_dict(**dict([(v: methods.get(v, metropolis)) for v in variables_to_update]))
+    info = ps.make_dict(**dict([(v: info.get(v, empty_dict)) for v in variables_to_update]))
+
     # Make an initial state vector, in order.    
     state = simulate_prior(model, observations.keys())(*[observations[k] for k in observations.keys()])
     state = ps.make_list(*[state[v] for v in model['variables']])
 
     info = dict([(v,0) for v in variables_to_update])
 
-    sweep_fn = metropolis_sweep(model, variables_to_update, sigmas, info, n_cycles_per_sweep)
+    sweep_fn = compiled_mcmc_sweep(model, methods, info, n_cycles_per_sweep)
     
-    trace = [state]
+    trace = ps.make_list(state)
+    tuning_trace = ps.make_list(info)
     for i in xrange(n_sweeps):
-        state, info = sweep_fn(trace[-1])
-        trace.append(state)
+        state, info = sweep_fn(trace.first)
+        trace.cons(state)
+        tuning_trace.cons(info)
         for v in variables_to_update:
             sigmas[v] = tune(sigmas[v], info[v])
             
-    return trace
+    return trace, tuning_trace
