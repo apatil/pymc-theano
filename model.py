@@ -92,6 +92,28 @@ def get_argument_names(f):
     "Returns the names of the arguments of the Theano function."
     return [s.name for s in f.input_storage]
 
+def logp_difference(model, wrt, arguments=None):
+    """
+    Returns a function that takes current values for some stochastic variables in the model,
+    and new values for some stochastic variables in the model, and returns the new logp minus
+    the current logp.
+    """
+    raise NotImplementedError, "this should work yet, but it doesn't."
+    all_stochastics = stochastics(model)
+    arguments = arguments or all_stochastics
+    check_no_deterministics(arguments, 'logp_difference')
+    check_no_deterministics(wrt, 'logp_difference')
+    
+    replacements = {}
+    for w in wrt:
+        replacements[w] = shallow_variable_copy(w, w.name+'_new')
+    differences = []
+    for f in model['factors']:
+        f_new = th.clone(f, replace=replacements)
+        differences.append(f_new - f)
+
+    return th.function(arguments + [replacements[w] for w in wrt], logp_or_neginf(differences), no_default_updates=True)
+
 def to_namedict(variables, values):
     "Makes a persistent dict mapping variable name to value."
     return ps.make_dict(**dict([(var.name, val) for var,val in zip(variables, values)]))
