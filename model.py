@@ -100,7 +100,7 @@ def get_argument_names(f):
     return [s.name for s in f.input_storage]
 
 def shallow_variable_copy(x,name):
-    return x.__class__(x.type, name=x.name)
+    return x.__class__(x.type, name=name)
 
 def logp_difference(model, replacements, arguments=None, compile=True):
     """
@@ -120,7 +120,7 @@ def logp_difference(model, replacements, arguments=None, compile=True):
         f_new = th.clone(f, replace=replacements)
         differences.append(f_new - f)
 
-    return maybe_compile(arguments + [replacements[w] for w in wrt], logp_or_neginf(differences), compile)
+    return maybe_compile(arguments + replacements.values(), logp_or_neginf(differences), compile)
 
 def to_namedict(variables, values):
     "Makes a persistent dict mapping variable name to value."

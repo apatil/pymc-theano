@@ -15,8 +15,8 @@ def metropolis(model, state, orig_x, cur_x, info):
     acc = T.log(model['stream'].uniform())<lpd
     next_x = T.switch(acc, x_p, cur_x)
     
-    return info.using(acceptance=info.get('acceptance',0)+acc), 
-            next_x, 
+    return info.using(acceptance=info.get('acceptance',0)+acc), \
+            next_x, \
             state.replace(cur_x, next_x)
 
 def flatten_info(state, info, variables):
