@@ -72,8 +72,7 @@ def logp_or_neginf(logps):
 def maybe_compile(arguments, expression, compile):
     "Either returns a raw Theano expression, or compiles it to a function."
     if not compile:
-        # return lambda new_args, arguments=arguments, expression=expression: conservative_clone(expression, replace=dict(zip(arguments, new_args)), reuse_shared=True)
-        return expression
+        return lambda new_args, arguments=arguments, expression=expression: conservative_clone(expression, replace=dict(zip(arguments, new_args)), reuse_shared=True)
     else:
         return th.function(arguments, expression, no_default_updates=True)
 
@@ -110,8 +109,6 @@ def logp_difference(model, replacements, arguments=None, compile=True):
     and new values for some stochastic variables in the model, and returns the new logp minus
     the current logp.
     """
-    import warnings
-    warnings.warn("This should work yet, but it doesn't.")
 
     all_stochastics = stochastics(model)
     arguments = arguments or all_stochastics
