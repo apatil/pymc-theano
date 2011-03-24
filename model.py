@@ -1,3 +1,4 @@
+from conservative_clone import conservative_clone
 import theano as th
 import functools
 from theano import tensor as T
@@ -71,7 +72,8 @@ def logp_or_neginf(logps):
 def maybe_compile(arguments, expression, compile):
     "Either returns a raw Theano expression, or compiles it to a function."
     if not compile:
-        return lambda new_args, arguments=arguments, expression=expression: th.clone(expression, replace=dict(zip(arguments, new_args)))
+        # return lambda new_args, arguments=arguments, expression=expression: conservative_clone(expression, replace=dict(zip(arguments, new_args)), reuse_shared=True)
+        return expression
     else:
         return th.function(arguments, expression, no_default_updates=True)
 
@@ -117,7 +119,7 @@ def logp_difference(model, replacements, arguments=None, compile=True):
     
     differences = []
     for f in model['factors']:
-        f_new = th.clone(f, replace=replacements)
+        f_new = conservative_clone(f, replace=replacements, reuse_shared=True)
         differences.append(f_new - f)
 
     return maybe_compile(arguments + replacements.values(), logp_or_neginf(differences), compile)
@@ -137,8 +139,8 @@ def simulate_prior(model, arguments=[], outputs = None):
     if any(map(isdeterministic, arguments)):
         raise TypeError, "The arguments of the logp function cannot include the deterministics %s."%filter(isdeterministic, variables)
     f__ = th.function(arguments, list(outputs))
-    def f_(*values):
-        return to_namedict(outputs, f__(*values))
+    def f_(value_dict):
+        return to_namedict(outputs, f__(**value_dict))
     return f_
     
     

@@ -12,10 +12,11 @@ def unpack_nodes(expr):
     all as a flat set.
     """
     nodes = set([expr])
-    for i in expr.owner.inputs:
-        nodes.add(i)
-        if i.owner:
-            nodes |= unpack_nodes(i)
+    if expr.owner:
+        for i in expr.owner.inputs:
+            nodes.add(i)
+            if i.owner:
+                nodes |= unpack_nodes(i)
     return nodes
 
 def isroot(node, nodes):
@@ -52,9 +53,15 @@ def conservative_clone(expr, replace, reuse_shared=False):
     expression even if some of their ancestors have been replaced.
     """
     
-    cur_nodes = unpack_nodes(expr)
-    cur_nodes.remove(expr)
     replace = copy(replace)
+    for k,v in replace.items():
+        if k is v:
+            replace.pop(k)    
+    if len(replace)==0:
+        return expr
+
+    cur_nodes = unpack_nodes(expr)
+    cur_nodes.remove(expr)    
     remaining_nodes = copy(cur_nodes)
     new_nodes = set()
     replaced_nodes = set(replace.keys())
@@ -79,3 +86,19 @@ def conservative_clone(expr, replace, reuse_shared=False):
         return clone_with_inputs(expr, maybe_replace_all(expr.owner.inputs, replace))
     else:
         return expr
+        
+if __name__ == '__main__':
+    stream=th.tensor.shared_randomstreams.RandomStreams() 
+    x = stream.normal(avg=0, std=1) 
+    x.name = 'x'
+    z = x+1
+    z.name = 'z'
+    y = stream.normal(avg=z,std=1) 
+    y.name = 'y'
+    w = (y-z)
+    w.name = 'w'
+    x2 = stream.normal(avg=0, std=1) 
+    x2.name='x2'
+    w2 = conservative_clone(w, replace={x:x2}, reuse_shared=True) 
+    f = th.function([x,x2], [x,y,z,x2,w-w2], no_default_updates=True) 
+    print f(3,3)
