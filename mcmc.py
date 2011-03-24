@@ -66,7 +66,7 @@ def compiled_mcmc_sweep(model, methods, n_cycles):
             state = methods[v].step(model, state, index_plist(state, index), v)
     
     f = th.function(orig_state, list(state), no_default_updates=True, mode='FAST_RUN')
-    th.printing.pydotprint(f,'f.pdf')
+    # th.printing.pydotprint(f,'f.pdf')
     
     def sweep(state_value_dict, orig_state=orig_state, f=f):
         "Takes a state, represented as a dict, applies n_cycles MCMC steps to it, and returns a new state represented as a dict."
@@ -98,6 +98,7 @@ def mcmc(model, observations, n_sweeps, n_cycles_per_sweep, methods=empty_dict, 
     sweep_fn = compiled_mcmc_sweep(model, methods, n_cycles_per_sweep)
     
     trace = ps.make_list(state_value)
+    
     t = time.time()
     for i in xrange(n_sweeps):
         state_value = sweep_fn(state_value)
