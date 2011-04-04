@@ -10,7 +10,7 @@ def require(pred):
 
 def add_normal(model, name, m, v):
     new_var = model['stream'].normal(avg=m, std=T.sqrt(v))
-    new_factors = [ require(v>0),
+    new_factors = [ require(T.gt(v,0)),
                     T.log(2*np.pi), 
                     -T.prod(T.shape(new_var))*T.log(v)/2,
                     -(new_var-m)**2/2/v]
